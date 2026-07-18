@@ -7,6 +7,11 @@
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 500;
 
+// Variabel untuk mengatur timer LED 3 detik
+unsigned long ledTurnOnTime = 0;
+bool isLedOn = false;
+const unsigned long ledDuration = 3000; // 3000 milidetik = 3 detik
+
 void setup_wifi() {
   Serial.println();
   Serial.print("Connecting to WiFi: ");
@@ -88,26 +93,63 @@ void postEmergency() {
   }
 }
 
+// Fungsi baru untuk menjalankan aksi darurat agar tidak mengulang kode
+void triggerEmergency() {
+  // Nyalakan LED dan catat waktunya
+  digitalWrite(LED_PIN, HIGH);
+  ledTurnOnTime = millis();
+  isLedOn = true;
+  Serial.println("[!] LED NYALA 3 DETIK [!]");
+
+  String teleMsg = "🚨 DARURAT! Tolong bantuan di rumah " + String(USER_NAME) + " (" + String(DEVICE_ID) + ")";
+  sendTelegramGroup(teleMsg);
+  postEmergency();
+}
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(1000);
   Serial.println("\n--- Sistem Publisher Mulai ---");
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  
+  // Setup pin LED sebagai OUTPUT dan pastikan mati saat awal
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW); 
 
   setup_wifi();
 }
 
 void loop() {
+  // 1. Cek dari Tombol Fisik
   if (digitalRead(BUTTON_PIN) == LOW) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
-      Serial.println("\n[!] TOMBOL DITEKAN [!]");
-
-      String teleMsg = "🚨 DARURAT! Tolong bantuan di rumah " + USER_NAME + " (" + DEVICE_ID + ")";
-      sendTelegramGroup(teleMsg);
-      postEmergency();
-
+      Serial.println("\n[!] TOMBOL FISIK DITEKAN [!]");
+      triggerEmergency();
       lastDebounceTime = millis();
     }
+  }
+
+  // 2. Cek dari input Serial Monitor
+  if (Serial.available() > 0) {
+    char incomingChar = Serial.read();
+    
+    // Jika karakter yang diketik adalah '1'
+    if (incomingChar == '1') {
+      Serial.println("\n[!] INPUT '1' DARI SERIAL DITERIMA [!]");
+      triggerEmergency();
+    }
+    
+    // Bersihkan sisa karakter di buffer (seperti newline/enter) 
+    while (Serial.available() > 0) {
+      Serial.read();
+    }
+  }
+
+  // 3. Cek Timer LED (Matikan jika sudah 3 detik)
+  if (isLedOn && (millis() - ledTurnOnTime >= ledDuration)) {
+    digitalWrite(LED_PIN, LOW);
+    isLedOn = false;
+    Serial.println("[!] LED MATI [!]");
   }
 }
